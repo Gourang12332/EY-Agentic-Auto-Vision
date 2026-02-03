@@ -1,137 +1,99 @@
-import { motion } from "framer-motion";
-import { Car, AlertTriangle, CheckCircle, Clock, Activity } from "lucide-react";
-
-interface VehiclePrediction {
-  component: string;
-  probability: string;
-  daysRemaining: number;
-}
-
-interface Vehicle {
-  id: string;
-  model: string;
-  type: string;
-  status: "CRITICAL" | "HEALTHY" | "WARNING";
-  healthScore: number;
-  lastSync: string;
-  prediction: VehiclePrediction | null;
-}
+import { Badge } from "@/components/ui/badge";
+import { AlertTriangle, Activity, Zap } from "lucide-react";
 
 interface VehicleCardProps {
-  vehicle: Vehicle;
+  car: any;
+  onClick: () => void;
 }
 
-const statusConfig = {
-  CRITICAL: {
-    color: "text-destructive",
-    bg: "bg-destructive/10",
-    border: "border-destructive",
-    icon: AlertTriangle,
-    glow: "animate-pulse-glow",
-  },
-  WARNING: {
-    color: "text-warning",
-    bg: "bg-warning/10",
-    border: "border-warning",
-    icon: AlertTriangle,
-    glow: "",
-  },
-  HEALTHY: {
-    color: "text-success",
-    bg: "bg-success/10",
-    border: "border-success",
-    icon: CheckCircle,
-    glow: "",
-  },
-};
-
-export const VehicleCard = ({ vehicle }: VehicleCardProps) => {
-  const config = statusConfig[vehicle.status];
-  const StatusIcon = config.icon;
+export const VehicleCard = ({ car, onClick }: VehicleCardProps) => {
+  const isCritical = car.status === "ALERT";
+  // Dynamic Colors based on status
+  const themeColor = isCritical ? "red" : "cyan";
+  const borderColor = isCritical ? "border-red-500/50" : "border-cyan-500/30";
+  const glowColor = isCritical ? "shadow-red-500/20" : "shadow-cyan-500/20";
+  const healthScore = isCritical ? 45 : 98;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className={`relative overflow-hidden rounded-xl border-2 ${config.border} ${config.glow} bg-card p-6 transition-all hover:scale-[1.02]`}
+    <div 
+      onClick={onClick}
+      className={`
+        relative group cursor-pointer overflow-hidden rounded-2xl border transition-all duration-500
+        bg-[#0a0f1c]/60 backdrop-blur-md
+        ${borderColor} hover:border-${themeColor}-400
+        shadow-[0_0_20px_rgba(0,0,0,0.5)] hover:shadow-[0_0_30px_rgba(0,255,255,0.15)]
+        hover:-translate-y-1
+      `}
     >
-      {/* Background grid effect */}
-      <div className="absolute inset-0 cyber-grid opacity-30" />
-      
-      {/* Status indicator bar */}
-      <div className={`absolute top-0 left-0 right-0 h-1 ${config.bg}`}>
-        <motion.div
-          className={`h-full ${vehicle.status === "HEALTHY" ? "bg-success" : vehicle.status === "WARNING" ? "bg-warning" : "bg-destructive"}`}
-          initial={{ width: 0 }}
-          animate={{ width: `${vehicle.healthScore}%` }}
-          transition={{ duration: 1, delay: 0.3 }}
-        />
-      </div>
+      {/* --- EFFECT: HOLOGRAPHIC SCANNER (Visible on Hover) --- */}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-400/10 to-transparent translate-y-[-100%] group-hover:animate-[scanline_1.5s_ease-in-out_infinite] pointer-events-none" />
 
-      <div className="relative z-10">
+      {/* --- TECH DECORATIONS (The "Corners") --- */}
+      <div className={`absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-${themeColor}-500/50 rounded-tl-xl`} />
+      <div className={`absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-${themeColor}-500/50 rounded-br-xl`} />
+
+      {/* Content */}
+      <div className="p-6 relative z-10 space-y-5">
+        
         {/* Header */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-lg ${config.bg}`}>
-              <Car className={`w-6 h-6 ${config.color}`} />
-            </div>
-            <div>
-              <h3 className="font-display text-lg font-bold text-foreground">{vehicle.model}</h3>
-              <p className="text-sm text-muted-foreground">{vehicle.type} • {vehicle.id}</p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-2xl font-bold text-white tracking-widest font-orbitron drop-shadow-md">
+              {car.model}
+            </h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`w-2 h-2 rounded-full ${isCritical ? 'bg-red-500 animate-ping' : 'bg-cyan-500'}`} />
+              <p className="text-xs text-slate-400 font-mono tracking-wider uppercase">
+                ID: {car.vehicle_id}
+              </p>
             </div>
           </div>
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${config.bg}`}>
-            <StatusIcon className={`w-4 h-4 ${config.color}`} />
-            <span className={`text-xs font-semibold ${config.color}`}>{vehicle.status}</span>
-          </div>
+          {isCritical ? (
+            <Badge className="bg-red-500/10 text-red-500 border border-red-500/50 animate-pulse">CRITICAL</Badge>
+          ) : (
+            <Badge className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/50">ONLINE</Badge>
+          )}
         </div>
 
-        {/* Health Score */}
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">Health Score</span>
-            <span className={`text-2xl font-display font-bold ${config.color}`}>{vehicle.healthScore}%</span>
+        {/* Health Bar Visualization */}
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs font-mono text-slate-400">
+            <span>SYSTEM INTEGRITY</span>
+            <span className={isCritical ? "text-red-400" : "text-cyan-400"}>{healthScore}%</span>
           </div>
-          <div className="h-2 bg-secondary rounded-full overflow-hidden">
-            <motion.div
-              className={`h-full ${vehicle.status === "HEALTHY" ? "bg-success" : vehicle.status === "WARNING" ? "bg-warning" : "bg-destructive"}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${vehicle.healthScore}%` }}
-              transition={{ duration: 1, delay: 0.5 }}
+          <div className="h-2 w-full bg-slate-800/50 rounded-full overflow-hidden border border-white/5">
+            <div 
+              className={`h-full transition-all duration-1000 ${isCritical ? "bg-gradient-to-r from-red-600 to-orange-500" : "bg-gradient-to-r from-cyan-600 to-blue-500"}`} 
+              style={{ width: `${healthScore}%`, boxShadow: `0 0 10px ${isCritical ? 'red' : 'cyan'}` }}
             />
           </div>
         </div>
 
-        {/* Sync Status */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-          <Clock className="w-4 h-4" />
-          <span>Last sync: {vehicle.lastSync}</span>
-          <Activity className="w-4 h-4 text-success animate-pulse ml-auto" />
-        </div>
-
-        {/* Prediction Alert */}
-        {vehicle.prediction && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            className={`p-4 rounded-lg ${config.bg} border ${config.border}`}
-          >
-            <div className="flex items-start gap-3">
-              <AlertTriangle className={`w-5 h-5 ${config.color} flex-shrink-0 mt-0.5`} />
+        {/* Prediction Alert Box */}
+        {isCritical && car.predictions.length > 0 && (
+          <div className="mt-4 p-3 rounded bg-red-950/30 border border-red-500/30 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
               <div>
-                <p className={`font-semibold text-sm ${config.color}`}>⚠️ PREDICTION</p>
-                <p className="text-sm text-foreground mt-1">
-                  {vehicle.prediction.component} failure likely in &lt; {vehicle.prediction.daysRemaining} days
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Confidence: {vehicle.prediction.probability}
+                <p className="text-xs font-bold text-red-400 uppercase tracking-wide">Predictive Failure</p>
+                <p className="text-sm text-red-200/80 leading-tight mt-1">
+                  {car.predictions[0].issue} detected. Est. failure in <span className="text-white font-bold">{car.predictions[0].prediction.days_left} days</span>.
                 </p>
               </div>
-            </div>
-          </motion.div>
+          </div>
         )}
+
+        {/* Footer Data */}
+        <div className="pt-4 border-t border-white/5 flex justify-between items-center text-xs text-slate-500 font-mono">
+            <div className="flex items-center gap-2">
+               <Zap className="h-3 w-3 text-yellow-500" />
+               <span>{car.fuel_type}</span>
+            </div>
+            <div className="flex items-center gap-1">
+               <Activity className="h-3 w-3 text-cyan-500" />
+               <span>LIVE TELEMETRY</span>
+            </div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   );
 };

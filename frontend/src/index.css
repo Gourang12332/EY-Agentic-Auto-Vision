@@ -66,9 +66,7 @@
     --glow-purple: 0 0 20px hsl(263 70% 50% / 0.5);
     --glow-success: 0 0 20px hsl(158 64% 52% / 0.5);
   }
-}
 
-@layer base {
   * {
     @apply border-border;
   }
@@ -76,6 +74,8 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', sans-serif;
+    /* Prevent horizontal scroll from animations */
+    overflow-x: hidden; 
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -84,74 +84,73 @@
 }
 
 @layer utilities {
-  .font-display {
-    font-family: 'Orbitron', sans-serif;
-  }
+  /* --- 1. EXISTING UTILITIES (KEPT) --- */
+  .font-display { font-family: 'Orbitron', sans-serif; }
+  .font-body { font-family: 'Inter', sans-serif; }
+  
+  .glow-cyan { box-shadow: var(--glow-cyan); }
+  .glow-red { box-shadow: var(--glow-red); }
+  .glow-purple { box-shadow: var(--glow-purple); }
+  .glow-success { box-shadow: var(--glow-success); }
 
-  .font-body {
-    font-family: 'Inter', sans-serif;
-  }
+  .text-glow-cyan { text-shadow: 0 0 10px hsl(187 94% 43% / 0.8); }
+  .text-glow-red { text-shadow: 0 0 10px hsl(0 84% 60% / 0.8); }
 
-  .glow-cyan {
-    box-shadow: var(--glow-cyan);
-  }
+  .gradient-voice { background: var(--gradient-voice); }
+  .gradient-critical { background: var(--gradient-critical); }
+  .gradient-success { background: var(--gradient-success); }
+  .gradient-cyber { background: var(--gradient-cyber); }
 
-  .glow-red {
-    box-shadow: var(--glow-red);
-  }
+  /* --- 2. NEW FUTURISTIC EFFECTS (ADDED) --- */
 
-  .glow-purple {
-    box-shadow: var(--glow-purple);
-  }
-
-  .glow-success {
-    box-shadow: var(--glow-success);
-  }
-
-  .text-glow-cyan {
-    text-shadow: 0 0 10px hsl(187 94% 43% / 0.8);
-  }
-
-  .text-glow-red {
-    text-shadow: 0 0 10px hsl(0 84% 60% / 0.8);
-  }
-
-  .gradient-voice {
-    background: var(--gradient-voice);
-  }
-
-  .gradient-critical {
-    background: var(--gradient-critical);
-  }
-
-  .gradient-success {
-    background: var(--gradient-success);
-  }
-
-  .gradient-cyber {
-    background: var(--gradient-cyber);
-  }
-
-  .cyber-grid {
+  /* The Moving Cyber Grid Background */
+  .cyber-grid-bg {
+    background-color: hsl(var(--background));
     background-image: 
-      linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
-    background-size: 50px 50px;
+      linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    animation: gridMove 20s linear infinite;
   }
 
-  .animate-pulse-glow {
-    animation: pulse-glow 2s ease-in-out infinite;
+  /* Floating Glow Orbs */
+  .glow-orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    z-index: -1;
+    opacity: 0.4;
+    animation: float 10s ease-in-out infinite;
   }
 
-  @keyframes pulse-glow {
-    0%, 100% {
-      box-shadow: 0 0 5px hsl(0 84% 60% / 0.5), 0 0 10px hsl(0 84% 60% / 0.3);
-    }
-    50% {
-      box-shadow: 0 0 20px hsl(0 84% 60% / 0.8), 0 0 40px hsl(0 84% 60% / 0.5);
-    }
+  /* Glassmorphism Panel */
+  .glass-panel {
+    @apply bg-slate-900/40 backdrop-blur-xl border border-white/10 shadow-2xl;
   }
 
+  /* --- 3. ANIMATION KEYFRAMES --- */
+  
+  @keyframes gridMove {
+    0% { background-position: 0 0; }
+    100% { background-position: 40px 40px; }
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-20px) scale(1.1); }
+  }
+
+  /* Scanner Animation for Vehicle Cards */
+  @keyframes scanline {
+    0% { transform: translateY(-100%); opacity: 0; }
+    50% { opacity: 1; }
+    100% { transform: translateY(200%); opacity: 0; }
+  }
+
+  /* Typing Animation (Kept from your original) */
   .animate-typing {
     overflow: hidden;
     white-space: nowrap;
@@ -161,26 +160,5 @@
   @keyframes typing {
     from { width: 0; }
     to { width: 100%; }
-  }
-
-  .scanline {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .scanline::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, hsl(187 94% 43% / 0.5), transparent);
-    animation: scan 3s linear infinite;
-  }
-
-  @keyframes scan {
-    0% { transform: translateY(0); }
-    100% { transform: translateY(100vh); }
   }
 }

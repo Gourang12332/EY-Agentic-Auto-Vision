@@ -1,72 +1,142 @@
-import { useState, useEffect } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, CheckCircle, Activity, Cpu } from "lucide-react"; // Added Cpu icon
 import { useNavigate } from "react-router-dom";
-// import { useAuth } from "@/contexts/AuthContext";
-import { AppHeader } from "@/components/AppHeader";
-import { FleetDashboard } from "@/components/FleetDashboard";
-import { VoiceAgent } from "@/components/VoiceAgent";
-import { ServiceTicket } from "@/components/ServiceTicket";
-import { FactoryIntel } from "@/components/FactoryIntel";
+import { StatCard } from "@/components/StatCard";
+import { VehicleCard } from "@/components/VehicleCard";
+import { SensorModal } from "@/components/SensorModal";
 
-type ViewState = "DASHBOARD" | "VOICE_AGENT" | "TICKET" | "FACTORY_INTEL";
-
-const pageTransition = {
-  initial: { opacity: 0, scale: 0.98 },
-  animate: { opacity: 1, scale: 1 },
-  exit: { opacity: 0, scale: 0.98 },
-  transition: { duration: 0.3 },
-};
+// ... (Interface Vehicle code remains same) ...
+interface Vehicle {
+  vehicle_id: string;
+  model: string;
+  fuel_type: string;
+  status: string;
+  summary: string;
+  predictions: any[];
+  sensors: any;
+}
 
 const Index = () => {
-  const [currentView, setCurrentView] = useState<ViewState>("DASHBOARD");
-  // const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [user, setUser] = useState<any>(null);
+  const [fleet, setFleet] = useState<Vehicle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCar, setSelectedCar] = useState<Vehicle | null>(null);
 
-  // useEffect(() => {
-  //   if (!isAuthenticated) {
-  //     navigate("/auth");
-  //   }
-  // }, [isAuthenticated, navigate]);
+  useEffect(() => {
+    // ... (Your existing useEffect code for fetching data) ...
+    const savedUser = localStorage.getItem("currentUser");
+    if (!savedUser) {
+      navigate("/login");
+      return;
+    }
+    const parsedUser = JSON.parse(savedUser);
+    setUser(parsedUser);
 
-  // if (!isAuthenticated) {
-  //   navigate("/auth");
-  //   return null;
-  // }
+    const fetchData = async () => {
+      const data = await api.getDashboard(parsedUser.user_id);
+      if (data && data.my_fleet) {
+        setFleet(data.my_fleet);
+        if (selectedCar) {
+          const updatedSelected = data.my_fleet.find((c: Vehicle) => c.vehicle_id === selectedCar.vehicle_id);
+          if (updatedSelected) setSelectedCar(updatedSelected);
+        }
+      }
+      setLoading(false);
+    };
 
-  const showHeader = currentView === "DASHBOARD";
+    fetchData();
+    const interval = setInterval(fetchData, 2000);
+    return () => clearInterval(interval);
+  }, [navigate, selectedCar?.vehicle_id]);
+
+  if (loading) return <div className="min-h-screen bg-[#050b14] flex items-center justify-center text-cyan-400 font-mono animate-pulse">ESTABLISHING SATELLITE UPLINK...</div>;
 
   return (
-    <div className="min-h-screen bg-background">
-      {showHeader && <AppHeader />}
+    <div className="min-h-screen relative font-sans selection:bg-cyan-500/30">
       
-      <AnimatePresence mode="wait">
-        {currentView === "DASHBOARD" && (
-          <motion.div key="dashboard" {...pageTransition}>
-            <FleetDashboard onIncomingCall={() => setCurrentView("VOICE_AGENT")} />
-          </motion.div>
-        )}
+      {/* --- BACKGROUND LAYERS --- */}
+      <div className="cyber-grid-bg" /> {/* The Moving Grid */}
+      <div className="glow-orb bg-cyan-500 top-[-10%] left-[-10%] w-[500px] h-[500px]" />
+      <div className="glow-orb bg-blue-600 bottom-[-10%] right-[-10%] w-[600px] h-[600px] animation-delay-2000" />
 
-        {currentView === "VOICE_AGENT" && (
-          <motion.div key="voice" {...pageTransition}>
-            <VoiceAgent
-              onConfirm={() => setCurrentView("TICKET")}
-              onDecline={() => setCurrentView("DASHBOARD")}
+      {/* --- MAIN CONTENT CONTAINER --- */}
+      <div className="relative z-10 p-8 max-w-7xl mx-auto">
+        
+        {/* Header */}
+        <header className="flex justify-between items-end mb-12 border-b border-white/10 pb-6">
+          <div>
+            <h1 className="text-5xl font-black italic bg-gradient-to-r from-cyan-300 via-blue-500 to-purple-600 bg-clip-text text-transparent font-orbitron tracking-tighter drop-shadow-lg">
+              AUTO AI
+            </h1>
+            <p className="text-cyan-100/60 mt-2 font-mono text-sm tracking-widest flex items-center gap-2">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              FLEET COMMAND CENTER • {user?.name.toUpperCase()}
+            </p>
+          </div>
+          <Button 
+            onClick={() => navigate("/login")} 
+            variant="outline" 
+            className="border-red-500/30 text-red-400 hover:bg-red-500/20 hover:text-red-300 backdrop-blur-md transition-all"
+          >
+            TERMINATE SESSION
+          </Button>
+        </header>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+          {/* We use classNames directly here to override the default StatCard styles for transparency */}
+          <div className="glass-panel p-6 rounded-2xl flex items-center justify-between group hover:bg-white/5 transition-all">
+             <div>
+               <p className="text-slate-400 text-xs font-bold tracking-widest mb-1">TOTAL ASSETS</p>
+               <h3 className="text-4xl font-bold text-white group-hover:scale-105 transition-transform">{fleet.length}</h3>
+             </div>
+             <div className="p-3 rounded-xl bg-blue-500/20 text-blue-400"><Cpu /></div>
+          </div>
+
+          <div className="glass-panel p-6 rounded-2xl flex items-center justify-between group hover:bg-white/5 transition-all">
+             <div>
+               <p className="text-slate-400 text-xs font-bold tracking-widest mb-1">OPTIMAL</p>
+               <h3 className="text-4xl font-bold text-emerald-400 group-hover:scale-105 transition-transform">{fleet.filter(c => c.status !== "ALERT").length}</h3>
+             </div>
+             <div className="p-3 rounded-xl bg-emerald-500/20 text-emerald-400"><CheckCircle /></div>
+          </div>
+
+          <div className="glass-panel p-6 rounded-2xl flex items-center justify-between border-red-500/30 bg-red-900/10 group hover:bg-red-900/20 transition-all">
+             <div>
+               <p className="text-slate-400 text-xs font-bold tracking-widest mb-1">CRITICAL</p>
+               <h3 className="text-4xl font-bold text-red-500 group-hover:scale-105 transition-transform">{fleet.filter(c => c.status === "ALERT").length}</h3>
+             </div>
+             <div className="p-3 rounded-xl bg-red-500/20 text-red-500 animate-pulse"><AlertTriangle /></div>
+          </div>
+        </div>
+
+        {/* Vehicle Grid */}
+        <h2 className="text-xl font-bold mb-6 text-white flex items-center gap-3 font-orbitron">
+          <Activity className="text-cyan-400" />
+          ACTIVE TELEMETRY FEEDS
+        </h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {fleet.map((car) => (
+            <VehicleCard 
+              key={car.vehicle_id} 
+              car={car} 
+              onClick={() => setSelectedCar(car)} 
             />
-          </motion.div>
-        )}
+          ))}
+        </div>
 
-        {currentView === "TICKET" && (
-          <motion.div key="ticket" {...pageTransition}>
-            <ServiceTicket onViewInsights={() => setCurrentView("FACTORY_INTEL")} />
-          </motion.div>
+        {/* Modal */}
+        {selectedCar && (
+          <SensorModal 
+            vehicle={selectedCar} 
+            onClose={() => setSelectedCar(null)} 
+          />
         )}
-
-        {currentView === "FACTORY_INTEL" && (
-          <motion.div key="factory" {...pageTransition}>
-            <FactoryIntel onBack={() => setCurrentView("DASHBOARD")} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </div>
     </div>
   );
 };
