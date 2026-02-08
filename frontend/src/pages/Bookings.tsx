@@ -1,241 +1,275 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
-// import { useAuth } from "@/contexts/AuthContext";
-import {
-  Calendar,
-  Clock,
-  MapPin,
-  Car,
-  CheckCircle2,
-  AlertCircle,
-  ChevronRight,
-  ArrowLeft,
-  Wrench,
-  Filter,
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Wrench, Clock, ArrowLeft, CheckCircle, Calendar, Car, AlertTriangle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-interface Booking {
-  id: string;
-  vehicle: string;
-  vehicleId: string;
-  serviceCenter: string;
-  address: string;
-  date: string;
-  time: string;
-  serviceType: string;
-  status: "CONFIRMED" | "COMPLETED" | "CANCELLED" | "IN_PROGRESS";
-  cost?: string;
-  agent: string;
+interface Vehicle {
+  vehicle_id: string;
+  model: string;
+  status: string;
 }
 
-const bookings: Booking[] = [
-  {
-    id: "BK-2025-889",
-    vehicle: "XUV 700",
-    vehicleId: "XYZ-789",
-    serviceCenter: "AutoCare Hub",
-    address: "Sector 62, Gurugram",
-    date: "Jan 18, 2025",
-    time: "10:00 AM",
-    serviceType: "Predictive Brake Replacement",
-    status: "CONFIRMED",
-    agent: "Scheduling Agent",
-  },
-  {
-    id: "BK-2025-756",
-    vehicle: "Thar 4x4",
-    vehicleId: "LMN-456",
-    serviceCenter: "Mahindra Service Center",
-    address: "MG Road, Delhi",
-    date: "Jan 5, 2025",
-    time: "2:30 PM",
-    serviceType: "Annual Maintenance",
-    status: "COMPLETED",
-    cost: "₹8,500",
-    agent: "Voice Agent",
-  },
-  {
-    id: "BK-2024-612",
-    vehicle: "Scorpio N",
-    vehicleId: "ABC-123",
-    serviceCenter: "Quick Auto Works",
-    address: "Connaught Place, Delhi",
-    date: "Dec 20, 2024",
-    time: "11:00 AM",
-    serviceType: "Battery Replacement",
-    status: "COMPLETED",
-    cost: "₹12,000",
-    agent: "Data Agent",
-  },
-  {
-    id: "BK-2024-489",
-    vehicle: "XUV 700",
-    vehicleId: "XYZ-789",
-    serviceCenter: "AutoCare Hub",
-    address: "Sector 62, Gurugram",
-    date: "Nov 15, 2024",
-    time: "9:00 AM",
-    serviceType: "Engine Oil Change",
-    status: "COMPLETED",
-    cost: "₹3,200",
-    agent: "Scheduling Agent",
-  },
-];
-
-const statusConfig = {
-  CONFIRMED: { color: "bg-cyber-cyan/20 text-cyber-cyan border-cyber-cyan/30", icon: CheckCircle2 },
-  COMPLETED: { color: "bg-green-500/20 text-green-400 border-green-500/30", icon: CheckCircle2 },
-  CANCELLED: { color: "bg-red-500/20 text-red-400 border-red-500/30", icon: AlertCircle },
-  IN_PROGRESS: { color: "bg-amber-500/20 text-amber-400 border-amber-500/30", icon: Wrench },
-};
-
 const Bookings = () => {
-  // const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<string>("ALL");
+  
+  // State
+  const [fleet, setFleet] = useState<Vehicle[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
 
-  // if (!isAuthenticated) {
-  //   navigate("/auth");
-  //   return null;
-  // }
+  // 1. Get User ID
+  const savedUser = localStorage.getItem("currentUser");
+  const user = savedUser ? JSON.parse(savedUser) : { user_id: "USR_UNKNOWN" };
+  const userId = user.user_id;
 
-  const filteredBookings = filter === "ALL" ? bookings : bookings.filter((b) => b.status === filter);
+  // 2. INITIAL LOAD: Fetch Fleet List
+  useEffect(() => {
+    const initData = async () => {
+      const dashboardData = await api.getDashboard(userId);
+      
+      if (dashboardData && dashboardData.my_fleet && dashboardData.my_fleet.length > 0) {
+        setFleet(dashboardData.my_fleet);
+        // Default to selecting the first car
+        setSelectedVehicleId(dashboardData.my_fleet[0].vehicle_id);
+      }
+      setInitializing(false);
+    };
+
+    initData();
+  }, [userId]);
+
+  // 3. DYNAMIC LOAD: Fetch Logs when Vehicle Changes
+  useEffect(() => {
+    if (!selectedVehicleId) return;
+
+    const fetchLogs = async () => {
+      const history = await api.getLogs(selectedVehicleId);
+      setLogs(history || []);
+    };
+
+    fetchLogs();
+  }, [selectedVehicleId]); // Runs every time you select a different car
+
+  // --- 4. BOOKING LOGIC (Uses Selected Vehicle) ---
+  const handleBooking = async () => {
+    if (!selectedVehicleId) return;
+    setLoading(true);
+
+    const bookingPayload = {
+      logId: `LOG_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0,14)}`,
+      userId: userId,
+      vehicleId: selectedVehicleId, // ✅ USES SELECTED CAR
+      timestamp: new Date().toISOString(),
+      logType: "BOOKING",
+      data: {
+        confirmationCode: "PENDING", 
+        status: "REQUESTED",
+        serviceCenterName: "AutoCare Hub (SC014)",
+        scheduledAt: new Date(Date.now() + 86400000).toISOString(),
+        isScheduled: true,
+        action: "CREATED"
+      }
+    };
+
+    const bookingResponse = await api.bookService(bookingPayload);
+
+    if (bookingResponse.success) {
+      // Save to History
+      const finalLog = {
+        ...bookingPayload,
+        data: {
+          ...bookingPayload.data,
+          status: bookingResponse.data.bookingStatus,
+          generatedLogId: bookingResponse.data.generatedLogId,
+          message: bookingResponse.data.message
+        }
+      };
+
+      await api.saveLog(finalLog);
+      
+      // Refresh Logs instantly
+      const updatedHistory = await api.getLogs(selectedVehicleId);
+      setLogs(updatedHistory);
+    } else {
+      alert("Booking Failed! Server Error.");
+    }
+
+    setLoading(false);
+  };
+
+  // Loading Screen
+  if (initializing) return <div className="min-h-screen bg-[#050b14] flex items-center justify-center text-cyan-400 font-mono animate-pulse">LOADING FLEET DATA...</div>;
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="font-orbitron text-xl font-bold text-foreground">My Bookings</h1>
-              <p className="text-sm text-muted-foreground">{bookings.length} total appointments</p>
-            </div>
+    <div className="min-h-screen bg-[#050b14] p-8 font-sans text-slate-100 relative overflow-x-hidden">
+      
+      {/* Background Effects */}
+      <div className="cyber-grid-bg" />
+      <div className="glow-orb bg-purple-600 top-[-10%] right-[-10%] w-[500px] h-[500px]" />
+
+      <div className="relative z-10 max-w-6xl mx-auto">
+        
+        {/* Header */}
+        <header className="flex justify-between items-center mb-8 border-b border-white/10 pb-6">
+          <div>
+            <h1 className="text-4xl font-black italic bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent font-orbitron">
+              SERVICE OPERATIONS
+            </h1>
+            <p className="text-slate-400 mt-2 font-mono text-sm">
+              SELECT A VEHICLE TO MANAGE SERVICE RECORDS
+            </p>
           </div>
+          <Button onClick={() => navigate("/")} variant="outline" className="border-slate-700 hover:bg-white/5">
+            <ArrowLeft className="mr-2 h-4 w-4" /> DASHBOARD
+          </Button>
+        </header>
 
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-muted-foreground" />
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground"
-            >
-              <option value="ALL">All</option>
-              <option value="CONFIRMED">Upcoming</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
-          </div>
-        </div>
-      </header>
+        {/* --- STEP 1: VEHICLE SELECTOR (Horizontal Scroll) --- */}
+        <div className="mb-10">
+          <h3 className="text-sm font-bold text-slate-400 mb-4 tracking-widest font-orbitron">AVAILABLE ASSETS</h3>
+          <div className="flex gap-4 overflow-x-auto p-4 scrollbar-hide">
+            {fleet.map((car) => {
+              const isSelected = selectedVehicleId === car.vehicle_id;
+              const isCritical = car.status === "ALERT";
 
-      {/* Stats */}
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: "Total Bookings", value: bookings.length, color: "text-foreground" },
-            { label: "Upcoming", value: bookings.filter((b) => b.status === "CONFIRMED").length, color: "text-cyber-cyan" },
-            { label: "Completed", value: bookings.filter((b) => b.status === "COMPLETED").length, color: "text-green-400" },
-            { label: "Total Spent", value: "₹23,700", color: "text-cyber-purple" },
-          ].map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="bg-card border border-border rounded-xl p-4"
-            >
-              <p className="text-sm text-muted-foreground">{stat.label}</p>
-              <p className={`text-2xl font-bold font-orbitron ${stat.color}`}>{stat.value}</p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Bookings List */}
-        <div className="space-y-4">
-          {filteredBookings.map((booking, index) => {
-            const StatusIcon = statusConfig[booking.status].icon;
-            return (
-              <motion.div
-                key={booking.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="bg-card border border-border rounded-xl p-5 hover:border-cyber-cyan/50 transition-colors cursor-pointer group"
-              >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  {/* Left */}
-                  <div className="flex-1 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-cyber-cyan/10 flex items-center justify-center">
-                        <Car className="w-5 h-5 text-cyber-cyan" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-foreground">{booking.vehicle}</h3>
-                        <p className="text-sm text-muted-foreground">{booking.vehicleId}</p>
-                      </div>
-                      <Badge className={`${statusConfig[booking.status].color} border ml-auto md:ml-0`}>
-                        <StatusIcon className="w-3 h-3 mr-1" />
-                        {booking.status}
-                      </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Calendar className="w-4 h-4" />
-                        <span>{booking.date}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Clock className="w-4 h-4" />
-                        <span>{booking.time}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground col-span-2">
-                        <MapPin className="w-4 h-4 flex-shrink-0" />
-                        <span className="truncate">{booking.serviceCenter}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className="bg-cyber-purple/10 border-cyber-purple/30 text-cyber-purple">
-                        <Wrench className="w-3 h-3 mr-1" />
-                        {booking.serviceType}
-                      </Badge>
-                      <Badge variant="outline" className="bg-muted border-border text-muted-foreground">
-                        {booking.agent}
-                      </Badge>
-                    </div>
+              return (
+                <div 
+                  key={car.vehicle_id}
+                  onClick={() => setSelectedVehicleId(car.vehicle_id)}
+                  className={`
+                    min-w-[250px] p-4 rounded-xl cursor-pointer transition-all duration-300 border-2 relative overflow-hidden group
+                    ${isSelected 
+                      ? "bg-cyan-950/40 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.3)] scale-[1.02]" 
+                      : "bg-slate-900/40 border-slate-800 hover:border-slate-600 hover:bg-slate-800/40"
+                    }
+                  `}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <Car className={`h-6 w-6 ${isSelected ? 'text-cyan-400' : 'text-slate-500'}`} />
+                    {isCritical && <AlertTriangle className="h-5 w-5 text-red-500 animate-pulse" />}
                   </div>
-
-                  {/* Right */}
-                  <div className="flex items-center gap-4">
-                    {booking.cost && (
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground">Total Cost</p>
-                        <p className="text-lg font-bold text-green-400">{booking.cost}</p>
-                      </div>
-                    )}
-                    <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-cyber-cyan transition-colors" />
-                  </div>
-                </div>
-
-                {/* Booking ID */}
-                <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
-                  <span className="text-xs font-mono text-muted-foreground">ID: {booking.id}</span>
-                  {booking.status === "CONFIRMED" && (
-                    <Button size="sm" variant="outline" className="text-xs border-cyber-cyan/50 text-cyber-cyan hover:bg-cyber-cyan/10">
-                      Reschedule
-                    </Button>
+                  <h4 className={`text-lg font-bold ${isSelected ? 'text-white' : 'text-slate-400'}`}>{car.model}</h4>
+                  <p className="text-xs font-mono text-slate-500">{car.vehicle_id}</p>
+                  
+                  {isSelected && (
+                    <div className="absolute bottom-0 left-0 w-full h-1 bg-cyan-400 animate-pulse" />
                   )}
                 </div>
-              </motion.div>
-            );
-          })}
+              );
+            })}
+          </div>
+        </div>
+
+        {/* --- STEP 2: BOOKING & HISTORY --- */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in slide-in-from-bottom-4 duration-700">
+          
+          {/* LEFT: Booking Action Card */}
+          <Card className="bg-slate-900/60 border-cyan-500/30 backdrop-blur-xl h-fit">
+            <CardHeader>
+              <CardTitle className="text-cyan-400 flex items-center gap-2 font-orbitron">
+                <Wrench className="h-5 w-5" /> INITIATE SERVICE
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="p-4 bg-cyan-950/40 rounded-lg border border-cyan-500/20 text-sm text-cyan-100">
+                <p className="font-bold mb-2 flex items-center gap-2">
+                   <CheckCircle className="h-4 w-4 text-cyan-400" /> Selected Vehicle
+                </p>
+                Booking service for <span className="text-white font-bold underline">{fleet.find(c => c.vehicle_id === selectedVehicleId)?.model}</span>.
+              </div>
+              
+              <div className="space-y-2 text-sm text-slate-400 font-mono">
+                 <div className="flex justify-between">
+                    <span>CENTER:</span> <span className="text-white">AutoCare Hub (SC014)</span>
+                 </div>
+                 <div className="flex justify-between">
+                    <span>DATE:</span> <span className="text-white">Tomorrow, 10:00 AM</span>
+                 </div>
+                 <div className="flex justify-between">
+                    <span>EST. COST:</span> <span className="text-white">$120.00</span>
+                 </div>
+              </div>
+
+              <Button 
+                onClick={handleBooking} 
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold h-12 text-lg shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all"
+              >
+                {loading ? "TRANSMITTING..." : "CONFIRM APPOINTMENT"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* RIGHT: Digital History Log */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2 font-orbitron">
+                <Clock className="text-purple-400" /> SERVICE HISTORY
+              </h2>
+              <Badge variant="outline" className="border-slate-700 text-slate-400">
+                {selectedVehicleId}
+              </Badge>
+            </div>
+
+            {logs.length === 0 ? (
+               <div className="text-slate-500 italic p-12 text-center border border-dashed border-slate-800 rounded-xl bg-slate-900/20">
+                 No service history found for this vehicle.
+               </div>
+            ) : (
+              logs.map((log) => (
+                <div key={log.logId} className="flex gap-4 group animate-in slide-in-from-right-4 duration-500">
+                  {/* Timeline */}
+                  <div className="flex flex-col items-center">
+                    <div className={`w-3 h-3 rounded-full mt-6 shadow-[0_0_10px_currentColor] ${log.logType === 'BOOKING' ? 'bg-green-500 text-green-500' : 'bg-amber-500 text-amber-500'}`} />
+                    <div className="w-0.5 h-full bg-slate-800 group-last:bg-transparent" />
+                  </div>
+
+                  {/* Log Card */}
+                  <div className="flex-1 pb-6">
+                    <div className="bg-slate-900/40 border border-white/5 p-5 rounded-xl hover:bg-white/5 transition-all hover:border-white/10 hover:translate-x-1">
+                      <div className="flex justify-between items-start mb-3">
+                        <Badge variant="outline" className={log.logType === 'BOOKING' ? 'text-green-400 border-green-500/30 bg-green-500/10' : 'text-amber-400 border-amber-500/30 bg-amber-500/10'}>
+                          {log.logType}
+                        </Badge>
+                        <span className="text-xs text-slate-500 font-mono flex items-center gap-1">
+                           <Calendar className="h-3 w-3" />
+                           {new Date(log.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+                      
+                      {log.logType === 'BOOKING' ? (
+                         <div>
+                           <h4 className="font-bold text-white text-lg">Service Appointment Confirmed</h4>
+                           <div className="text-sm text-slate-400 mt-2 grid grid-cols-2 gap-4">
+                             <div>
+                               <span className="text-slate-600 text-xs block">SERVICE CENTER</span>
+                               {log.data.serviceCenterName}
+                             </div>
+                             <div>
+                               <span className="text-slate-600 text-xs block">STATUS</span>
+                               <span className="text-green-400 font-bold">{log.data.status}</span>
+                             </div>
+                           </div>
+                         </div>
+                      ) : (
+                         <div>
+                           <h4 className="font-bold text-white text-lg">Issue Detected: {log.data.component}</h4>
+                           <p className="text-sm text-slate-400 mt-1">
+                             {log.data.issue} <span className="text-amber-500">({log.data.severity})</span>
+                           </p>
+                         </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

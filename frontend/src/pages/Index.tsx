@@ -26,31 +26,40 @@ const Index = () => {
   const [selectedCar, setSelectedCar] = useState<Vehicle | null>(null);
 
   useEffect(() => {
-    // ... (Your existing useEffect code for fetching data) ...
-    const savedUser = localStorage.getItem("currentUser");
-    if (!savedUser) {
-      navigate("/login");
-      return;
+  const savedUser = localStorage.getItem("currentUser");
+  if (!savedUser) {
+    navigate("/login");
+    return;
+  }
+
+  const parsedUser = JSON.parse(savedUser);
+  setUser(parsedUser);
+
+  const fetchData = async () => {
+    const data = await api.getDashboard(parsedUser.user_id);
+
+    if (data && data.my_fleet) {
+      setFleet(data.my_fleet);
+
+      // Update selected car ONLY if modal open
+      setSelectedCar(prev => {
+        if (!prev) return null;
+        return data.my_fleet.find(
+          (c: Vehicle) => c.vehicle_id === prev.vehicle_id
+        ) || null;
+      });
     }
-    const parsedUser = JSON.parse(savedUser);
-    setUser(parsedUser);
 
-    const fetchData = async () => {
-      const data = await api.getDashboard(parsedUser.user_id);
-      if (data && data.my_fleet) {
-        setFleet(data.my_fleet);
-        if (selectedCar) {
-          const updatedSelected = data.my_fleet.find((c: Vehicle) => c.vehicle_id === selectedCar.vehicle_id);
-          if (updatedSelected) setSelectedCar(updatedSelected);
-        }
-      }
-      setLoading(false);
-    };
+    setLoading(false);
+  };
 
-    fetchData();
-    const interval = setInterval(fetchData, 2000);
-    return () => clearInterval(interval);
-  }, [navigate, selectedCar?.vehicle_id]);
+  fetchData();
+  const interval = setInterval(fetchData, 2000);
+
+  return () => clearInterval(interval);
+
+}, [navigate]); // ✅ ONLY navigate
+
 
   if (loading) return <div className="min-h-screen bg-[#050b14] flex items-center justify-center text-cyan-400 font-mono animate-pulse">ESTABLISHING SATELLITE UPLINK...</div>;
 
