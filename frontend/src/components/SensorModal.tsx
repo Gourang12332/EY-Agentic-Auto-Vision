@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Battery, Thermometer, Activity, Droplets, Gauge, Wind, Zap, X } from "lucide-react";
+import { Battery, Thermometer, Activity, Droplets, Gauge, Wind, Zap, X, PhoneCall, AlertOctagon } from "lucide-react";
 
 interface SensorModalProps {
   vehicle: any;
@@ -7,7 +8,53 @@ interface SensorModalProps {
 }
 
 export const SensorModal = ({ vehicle, onClose }: SensorModalProps) => {
+  const [calling, setCalling] = useState(false);
+  const [callStatus, setCallStatus] = useState<"idle" | "success" | "error">("idle");
+
   if (!vehicle) return null;
+
+  // --- 1. CRITICALITY CHECK ---
+  // We filter for issues that have High Severity OR Low Days Left (Immediate Action)
+  const criticalIssues = vehicle.predictions?.filter((p: any) => 
+    p.severity === "HIGH" || 
+    p.prediction?.days_left <= 3 || 
+    p.prediction?.certainty > 0.8 // Assuming >0.8 means highly likely failure
+  ) || [];
+
+  const isCritical = criticalIssues.length > 0;
+
+  // --- 2. API CALL HANDLER ---
+  const triggerAgentCall = async () => {
+    setCalling(true);
+    setCallStatus("idle");
+
+    try {
+      const response = await fetch("https://calling-agent-ey-1.onrender.com/make-call", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          number: "+918302619541", // The number you provided
+          // Optional: You could pass vehicle details if the API supports it
+          // context: `Critical failure detected in ${vehicle.model}: ${criticalIssues[0]?.issue}`
+        }),
+      });
+
+      if (response.ok) {
+        setCallStatus("success");
+        // Optional: Auto-close modal after 2 seconds?
+        // setTimeout(onClose, 2000); 
+      } else {
+        setCallStatus("error");
+      }
+    } catch (error) {
+      console.error("Agent Call Failed:", error);
+      setCallStatus("error");
+    } finally {
+      setCalling(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -29,6 +76,52 @@ export const SensorModal = ({ vehicle, onClose }: SensorModalProps) => {
 
         {/* Content */}
         <div className="p-6">
+          
+          {/* --- CRITICAL ALERT SECTION (New) --- */}
+          {isCritical && (
+            <div className="mb-6 p-4 rounded-xl bg-red-950/30 border border-red-500/50 flex flex-col md:flex-row justify-between items-center gap-4 animate-pulse-slow">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-red-500/20 rounded-full">
+                   <AlertOctagon className="h-6 w-6 text-red-500" />
+                </div>
+                <div>
+                  <h4 className="text-red-400 font-bold text-lg">CRITICAL FAILURE PREDICTED</h4>
+                  <p className="text-red-200/70 text-sm max-w-lg">
+                    {criticalIssues[0]?.issue || "Multiple critical sensor anomalies detected."} 
+                    {criticalIssues[0]?.prediction?.days_left === 0 && " (IMMEDIATE ACTION REQUIRED)"}
+                  </p>
+                </div>
+              </div>
+              
+              <Button 
+                onClick={triggerAgentCall} 
+                disabled={calling || callStatus === 'success'}
+                className={`
+                  font-bold border shadow-lg transition-all min-w-[180px]
+                  ${callStatus === 'success' 
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500" 
+                    : callStatus === 'error'
+                    ? "bg-red-600 hover:bg-red-700 text-white border-red-500"
+                    : "bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse"
+                  }
+                `}
+              >
+                {calling ? (
+                  "CONNECTING..." 
+                ) : callStatus === 'success' ? (
+                  "AGENT DISPATCHED"
+                ) : callStatus === 'error' ? (
+                  "RETRY CALL"
+                ) : (
+                  <>
+                    <PhoneCall className="mr-2 h-4 w-4" /> CALL AGENT
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* AI Summary */}
           <div className="mb-8 p-4 bg-cyan-950/30 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm leading-relaxed">
               <span className="font-bold text-cyan-400 block mb-1">AI DIAGNOSTIC SUMMARY:</span>
               {vehicle.summary}
