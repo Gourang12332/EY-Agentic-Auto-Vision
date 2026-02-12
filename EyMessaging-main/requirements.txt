@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+motor
+twilio
+python-dotenv
+dnspython
+python-multipart  
+httpx
