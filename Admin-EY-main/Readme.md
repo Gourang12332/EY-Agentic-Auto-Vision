@@ -1,7 +1,5 @@
 # Admin-EY-main
-
 Admin & Vendor Traceability API
-
 Overview
 
 This is a FastAPI-based Admin Backend for managing:
@@ -18,7 +16,7 @@ Vendor Analytics
 
 The system provides end-to-end traceability of parts from vendor to failure, enabling real-world supplier quality analysis.
 
-Tech Stack
+# Tech Stack
 
 FastAPI – REST API framework
 
@@ -42,7 +40,7 @@ Install & run:
 pip install -r requirements.txt
 uvicorn main:app --reload
 
-Swagger:
+ # Swagger UI:
 
 http://127.0.0.1:8000/docs
 Database Collections
@@ -61,7 +59,7 @@ GET /get-center-details/{id} – Center by ID
 
 GET /get-center-by-name/{name} – Center by name
 
-Vendors & Supply Chain
+# Vendors & Supply Chain
 
 POST /register-vendor – Register supplier
 
@@ -73,7 +71,7 @@ GET /vendor-analytics/{vendor_id} – Vendor RCA stats
 
 GET /get-all-vendors – List vendors
 
-RCA Flow (Main Logic)
+# RCA Flow (Main Logic)
 
 Vendor supplies parts → add-batch
 
@@ -92,7 +90,7 @@ This score is derived from real failures, not manual ratings.
 
 Why This System
 
-Real-world part traceability
+# Real-world part traceability
 
 Automatic vendor quality scoring
 
