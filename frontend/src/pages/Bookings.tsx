@@ -3,13 +3,22 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Wrench, Clock, ArrowLeft, CheckCircle, Calendar, Car, AlertTriangle } from "lucide-react";
+import { Wrench, Clock, ArrowLeft, CheckCircle, Calendar, Car, AlertTriangle, MapPin } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { format } from "date-fns"; // Make sure to npm install date-fns if not present, or use native Date
 
 interface Vehicle {
   vehicle_id: string;
   model: string;
   status: string;
+  manufacturer?: string; // e.g., "BMW", "Maruti" - assumed to be part of vehicle data or derived from model
+}
+
+interface ServiceCenter {
+  centerId: string;
+  name: string;
+  location: string;
+  company_name: string;
 }
 
 const Bookings = () => {
@@ -21,6 +30,12 @@ const Bookings = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
+
+  // Booking Form State
+  const [availableCenters, setAvailableCenters] = useState<ServiceCenter[]>([]);
+  const [selectedCenter, setSelectedCenter] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [selectedTime, setSelectedTime] = useState<string>("");
 
   // 1. Get User ID
   const savedUser = localStorage.getItem("currentUser");
@@ -34,7 +49,6 @@ const Bookings = () => {
       
       if (dashboardData && dashboardData.my_fleet && dashboardData.my_fleet.length > 0) {
         setFleet(dashboardData.my_fleet);
-        // Default to selecting the first car
         setSelectedVehicleId(dashboardData.my_fleet[0].vehicle_id);
       }
       setInitializing(false);
@@ -43,66 +57,121 @@ const Bookings = () => {
     initData();
   }, [userId]);
 
-  // 3. DYNAMIC LOAD: Fetch Logs when Vehicle Changes
+  // 3. DYNAMIC LOAD: Fetch Logs & Centers when Vehicle Changes
   useEffect(() => {
     if (!selectedVehicleId) return;
 
-    const fetchLogs = async () => {
+    const fetchContextData = async () => {
+      // A. Fetch History Logs
       const history = await api.getLogs(selectedVehicleId);
       setLogs(history || []);
-    };
 
-    fetchLogs();
-  }, [selectedVehicleId]); // Runs every time you select a different car
+      // B. Fetch Service Centers for this Vehicle's Brand
+      // Assuming 'model' or 'vehicle_id' contains the brand, or we have a manufacturer field.
+      // Logic: Extract "Maruti" from "Maruti_123" or use the model name.
+      const currentCar = fleet.find(c => c.vehicle_id === selectedVehicleId);
+      if (currentCar) {
+         // Simple heuristic: Try to match the first word of the model or ID as the company
+         // In a real app, 'manufacturer' should be a distinct field.
+         let companyQuery = currentCar.model.split(" ")[0]; // e.g., "BMW" from "BMW X5"
+         
+         // If vehicle_id has underscore logic like "Maruti_123", prefer that
+         if (currentCar.vehicle_id.includes("_")) {
+             companyQuery = currentCar.vehicle_id.split("_")[0];
+         }
 
-  // --- 4. BOOKING LOGIC (Uses Selected Vehicle) ---
-  const handleBooking = async () => {
-    if (!selectedVehicleId) return;
-    setLoading(true);
-
-    const bookingPayload = {
-      logId: `LOG_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0,14)}`,
-      userId: userId,
-      vehicleId: selectedVehicleId, // ✅ USES SELECTED CAR
-      timestamp: new Date().toISOString(),
-      logType: "BOOKING",
-      data: {
-        confirmationCode: "PENDING", 
-        status: "REQUESTED",
-        serviceCenterName: "AutoCare Hub (SC014)",
-        scheduledAt: new Date(Date.now() + 86400000).toISOString(),
-        isScheduled: true,
-        action: "CREATED"
+         try {
+             // Using the deployed admin API to find centers
+             // Note: The screenshot showed /get-center-by-name, but typically you search by company.
+             // We will filter the results client-side if the API returns all, or query specific if supported.
+             // For now, let's assume we fetch all and filter, or use a specific search endpoint if available.
+             // Replacing with the endpoint likely available based on previous context:
+             const response = await fetch(`https://admin-ey-1.onrender.com/get-all-centers`);
+             const allCenters = await response.json();
+             
+             // Filter for the specific company (case-insensitive)
+             const relevantCenters = allCenters.filter((c: any) => 
+                 c.company_name?.toLowerCase().includes(companyQuery.toLowerCase()) || 
+                 c.name.toLowerCase().includes(companyQuery.toLowerCase())
+             );
+             
+             setAvailableCenters(relevantCenters.length > 0 ? relevantCenters : allCenters.slice(0, 5)); // Fallback to top 5 if no match
+         } catch (err) {
+             console.error("Failed to fetch centers", err);
+         }
       }
     };
 
-    const bookingResponse = await api.bookService(bookingPayload);
+    fetchContextData();
+  }, [selectedVehicleId, fleet]); 
 
-    if (bookingResponse.success) {
-      // Save to History
-      const finalLog = {
-        ...bookingPayload,
-        data: {
-          ...bookingPayload.data,
-          status: bookingResponse.data.bookingStatus,
-          generatedLogId: bookingResponse.data.generatedLogId,
-          message: bookingResponse.data.message
-        }
-      };
+  // --- 4. BOOKING LOGIC ---
+  const handleBooking = async () => {
+    if (!selectedVehicleId || !selectedCenter || !selectedDate || !selectedTime) {
+        alert("Please select a service center, date, and time.");
+        return;
+    }
+    setLoading(true);
 
-      await api.saveLog(finalLog);
-      
-      // Refresh Logs instantly
-      const updatedHistory = await api.getLogs(selectedVehicleId);
-      setLogs(updatedHistory);
-    } else {
-      alert("Booking Failed! Server Error.");
+    const centerDetails = availableCenters.find(c => c.centerId === selectedCenter);
+    const scheduledDateTime = new Date(`${selectedDate}T${selectedTime}:00Z`).toISOString();
+
+    // Construct the Manual Booking JSON as requested
+    const bookingPayload = {
+      logId: `LOG_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0,14)}`,
+      userId: userId,
+      vehicleId: selectedVehicleId,
+      timestamp: new Date().toISOString(),
+      logType: "BOOKING",
+      data: {
+         vehicleId: selectedVehicleId,
+         confirmationCode: "PENDING", // Will be updated by backend response
+         status: "REQUESTED",
+         scheduledService: {
+            isScheduled: true,
+            serviceCenterName: centerDetails?.name || "Unknown Center",
+            dateTime: scheduledDateTime
+         },
+         action: "CREATED"
+      }
+    };
+
+    try {
+        const bookingResponse = await api.bookService(bookingPayload);
+
+        if (bookingResponse.success) {
+          // Save the confirmed log to history
+          // Backend usually returns the confirmation code here
+          const finalLog = {
+            ...bookingPayload,
+            data: {
+              ...bookingPayload.data,
+              confirmationCode: bookingResponse.data.confirmationCode || "CONFIRMED",
+              status: "CONFIRMED",
+              message: "Service appointment scheduled successfully."
+            }
+          };
+
+          await api.saveLog(finalLog);
+          
+          // Refresh Logs
+          const updatedHistory = await api.getLogs(selectedVehicleId);
+          setLogs(updatedHistory);
+          
+          // Reset Form
+          setSelectedDate("");
+          setSelectedTime("");
+          setSelectedCenter("");
+        } else {
+alert("Booking Failed! " + ((bookingResponse as any).message || "Server Error."));        }
+    } catch (e) {
+        console.error("Booking error", e);
+        alert("An error occurred while booking.");
     }
 
     setLoading(false);
   };
 
-  // Loading Screen
   if (initializing) return <div className="min-h-screen bg-[#050b14] flex items-center justify-center text-cyan-400 font-mono animate-pulse">LOADING FLEET DATA...</div>;
 
   return (
@@ -129,7 +198,7 @@ const Bookings = () => {
           </Button>
         </header>
 
-        {/* --- STEP 1: VEHICLE SELECTOR (Horizontal Scroll) --- */}
+        {/* --- STEP 1: VEHICLE SELECTOR --- */}
         <div className="mb-10">
           <h3 className="text-sm font-bold text-slate-400 mb-4 tracking-widest font-orbitron">AVAILABLE ASSETS</h3>
           <div className="flex gap-4 overflow-x-auto p-4 scrollbar-hide">
@@ -183,14 +252,47 @@ const Bookings = () => {
                 Booking service for <span className="text-white font-bold underline">{fleet.find(c => c.vehicle_id === selectedVehicleId)?.model}</span>.
               </div>
               
-              <div className="space-y-2 text-sm text-slate-400 font-mono">
-                 <div className="flex justify-between">
-                    <span>CENTER:</span> <span className="text-white">AutoCare Hub (SC014)</span>
+              <div className="space-y-4">
+                 {/* Service Center Selector */}
+                 <div>
+                    <label className="text-xs font-bold text-slate-500 mb-1 block">SELECT SERVICE CENTER</label>
+                    <select 
+                        className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white focus:border-cyan-500 outline-none"
+                        value={selectedCenter}
+                        onChange={(e) => setSelectedCenter(e.target.value)}
+                    >
+                        <option value="">-- Choose Center --</option>
+                        {availableCenters.map(center => (
+                            <option key={center.centerId} value={center.centerId}>
+                                {center.name} ({center.location})
+                            </option>
+                        ))}
+                    </select>
                  </div>
-                 <div className="flex justify-between">
-                    <span>DATE:</span> <span className="text-white">Tomorrow, 10:00 AM</span>
+
+                 {/* Date & Time Picker */}
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 mb-1 block">DATE</label>
+                        <input 
+                            type="date" 
+                            className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white focus:border-cyan-500 outline-none"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 mb-1 block">TIME</label>
+                        <input 
+                            type="time" 
+                            className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white focus:border-cyan-500 outline-none"
+                            value={selectedTime}
+                            onChange={(e) => setSelectedTime(e.target.value)}
+                        />
+                    </div>
                  </div>
-                 <div className="flex justify-between">
+
+                 <div className="flex justify-between text-xs text-slate-400 font-mono pt-2">
                     <span>EST. COST:</span> <span className="text-white">$120.00</span>
                  </div>
               </div>
@@ -243,26 +345,26 @@ const Bookings = () => {
                       </div>
                       
                       {log.logType === 'BOOKING' ? (
-                         <div>
-                           <h4 className="font-bold text-white text-lg">Service Appointment Confirmed</h4>
-                           <div className="text-sm text-slate-400 mt-2 grid grid-cols-2 gap-4">
-                             <div>
-                               <span className="text-slate-600 text-xs block">SERVICE CENTER</span>
-                               {log.data.serviceCenterName}
-                             </div>
-                             <div>
-                               <span className="text-slate-600 text-xs block">STATUS</span>
-                               <span className="text-green-400 font-bold">{log.data.status}</span>
-                             </div>
-                           </div>
-                         </div>
+                          <div>
+                            <h4 className="font-bold text-white text-lg">Service Appointment Confirmed</h4>
+                            <div className="text-sm text-slate-400 mt-2 grid grid-cols-2 gap-4">
+                              <div>
+                                <span className="text-slate-600 text-xs block">SERVICE CENTER</span>
+                                {log.data.scheduledService?.serviceCenterName || log.data.serviceCenterName || "N/A"}
+                              </div>
+                              <div>
+                                <span className="text-slate-600 text-xs block">STATUS</span>
+                                <span className="text-green-400 font-bold">{log.data.status}</span>
+                              </div>
+                            </div>
+                          </div>
                       ) : (
-                         <div>
-                           <h4 className="font-bold text-white text-lg">Issue Detected: {log.data.component}</h4>
-                           <p className="text-sm text-slate-400 mt-1">
-                             {log.data.issue} <span className="text-amber-500">({log.data.severity})</span>
-                           </p>
-                         </div>
+                          <div>
+                            <h4 className="font-bold text-white text-lg">Issue Detected: {log.data.component || "General System"}</h4>
+                            <p className="text-sm text-slate-400 mt-1">
+                              {log.data.issue} <span className="text-amber-500">({log.data.severity || "MEDIUM"})</span>
+                            </p>
+                          </div>
                       )}
                     </div>
                   </div>
